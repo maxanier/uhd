@@ -38,19 +38,24 @@ jobs:
             --from="$BASE_SHA" \
             --to="$HEAD_SHA" 2>&1 | tee "$output_file"; then
             if [[ -s "$output_file" ]]; then
-              printf 'Commit message lint passed with warnings.\n\n' \
+              printf '### Passed with warnings\n\nCommitlint reported style warnings.\n\n' \
                 >> "$GITHUB_STEP_SUMMARY"
-              while IFS= read -r line; do
-                printf '    %s\n' "$line" >> "$GITHUB_STEP_SUMMARY"
-              done < "$output_file"
+              printf '<details>\n<summary>Commitlint output</summary>\n\n<pre>\n' \
+                >> "$GITHUB_STEP_SUMMARY"
+              sed -e 's/\&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' \
+                "$output_file" >> "$GITHUB_STEP_SUMMARY"
+              printf '</pre>\n\n</details>\n' >> "$GITHUB_STEP_SUMMARY"
             else
-              printf 'All pull request commit messages passed.\n' \
+              printf '### Passed\n\nAll pull request commit messages satisfy the configured rules.\n' \
                 >> "$GITHUB_STEP_SUMMARY"
             fi
           else
-            printf 'Commit message lint failed.\n\n' >> "$GITHUB_STEP_SUMMARY"
-            while IFS= read -r line; do
-              printf '    %s\n' "$line" >> "$GITHUB_STEP_SUMMARY"
-            done < "$output_file"
+            printf '### Failed\n\nOne or more commit messages do not satisfy the configured rules.\n\n' \
+              >> "$GITHUB_STEP_SUMMARY"
+            printf '<details open>\n<summary>Commitlint diagnostics</summary>\n\n<pre>\n' \
+              >> "$GITHUB_STEP_SUMMARY"
+            sed -e 's/\&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' \
+              "$output_file" >> "$GITHUB_STEP_SUMMARY"
+            printf '</pre>\n\n</details>\n' >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
