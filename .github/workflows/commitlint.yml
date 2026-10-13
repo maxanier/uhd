@@ -1,0 +1,61 @@
+name: Commit Message Lint
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  commitlint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out pull request head
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Lint pull request commits
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -o pipefail
+          printf '## Commit message lint\n\n' >> "$GITHUB_STEP_SUMMARY"
+          output_file="$(mktemp)"
+          trap 'rm -f "$output_file"' EXIT
+          # Lint only commits introduced by this pull request.
+          if npx --yes --package @commitlint/cli@19.8.1 -- commitlint \
+            --config .github/workflows/.commitlintrc.cjs \
+            --from="$BASE_SHA" \
+            --to="$HEAD_SHA" 2>&1 | tee "$output_file"; then
+            if [[ -s "$output_file" ]]; then
+              printf '### Passed with warnings\n\nCommitlint reported style warnings.\n\n' \
+                >> "$GITHUB_STEP_SUMMARY"
+              printf '<details>\n<summary>Commitlint output</summary>\n\n<pre>\n' \
+                >> "$GITHUB_STEP_SUMMARY"
+              sed -e 's/\&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' \
+                "$output_file" >> "$GITHUB_STEP_SUMMARY"
+              printf '</pre>\n\n</details>\n' >> "$GITHUB_STEP_SUMMARY"
+            else
+              printf '### Passed\n\nAll pull request commit messages satisfy the configured rules.\n' \
+                >> "$GITHUB_STEP_SUMMARY"
+            fi
+          else
+            printf '### Failed\n\nOne or more commit messages do not satisfy the configured rules.\n\n' \
+              >> "$GITHUB_STEP_SUMMARY"
+            printf '<details open>\n<summary>Commitlint diagnostics</summary>\n\n<pre>\n' \
+              >> "$GITHUB_STEP_SUMMARY"
+            sed -e 's/\&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' \
+              "$output_file" >> "$GITHUB_STEP_SUMMARY"
+            printf '</pre>\n\n</details>\n' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
